@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+.env
+*.log
+server/node_modules
+client/node_modules
+server/companyhub.db
+.DS_Store

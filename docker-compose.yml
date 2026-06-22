@@ -1,0 +1,68 @@
+# WOLF3D ERP — production stack for company LAN deployment.
+# Single entrypoint: http://<this-host-LAN-IP>:${WEB_PORT}
+# Bring up with:  docker compose up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wolf3d-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wolf3d}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wolf3d_password}
+      POSTGRES_DB: ${POSTGRES_DB:-wolf3d_erp}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wolf3d} -d ${POSTGRES_DB:-wolf3d_erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - wolf3d-net
+
+  server:
+    build:
+      context: ./server
+    container_name: wolf3d-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-wolf3d}:${POSTGRES_PASSWORD:-wolf3d_password}@db:5432/${POSTGRES_DB:-wolf3d_erp}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_NAME: ${ADMIN_NAME:-WOLF3D Administrator}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      LOGIN_RATE_WINDOW_MS: ${LOGIN_RATE_WINDOW_MS:-900000}
+      LOGIN_RATE_MAX: ${LOGIN_RATE_MAX:-10}
+    networks:
+      - wolf3d-net
+    # Not published to the host — only reachable via the web (nginx) service.
+    expose:
+      - "4000"
+
+  web:
+    build:
+      context: ./client
+    container_name: wolf3d-web
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-80}:80"
+    networks:
+      - wolf3d-net
+
+volumes:
+  db-data:
+
+networks:
+  wolf3d-net:
+    driver: bridge
